@@ -1,0 +1,26 @@
+{
+  "name": "claude-resume-timer",
+  "version": "0.1.0",
+  "description": "Resume a Claude Code session after a delay using a systemd user timer.",
+  "keywords": ["claude-code", "claude", "timer", "resume", "systemd"],
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "claude-resume": "bin/claude-resume.js"
+  },
+  "files": ["bin", "lib", "README.md", "LICENSE"],
+  "scripts": {
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/luisobz/claude-resume.git"
+  },
+  "bugs": {
+    "url": "https://github.com/luisobz/claude-resume/issues"
+  },
+  "homepage": "https://github.com/luisobz/claude-resume#readme"
+}
