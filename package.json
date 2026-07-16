@@ -1,14 +1,32 @@
 {
-  "name": "claude-resume-timer",
-  "version": "0.1.0",
-  "description": "Resume a Claude Code session after a delay using a systemd user timer.",
-  "keywords": ["claude-code", "claude", "timer", "resume", "systemd"],
+  "name": "agent-resume",
+  "version": "1.0.0",
+  "description": "Interactive CLI to schedule your coding agents (Claude Code, Codex, Copilot, Gemini, Cursor, Aider, ...) to resume a session or start a new one at the time you choose.",
+  "keywords": [
+    "cli",
+    "agents",
+    "scheduler",
+    "resume",
+    "claude-code",
+    "codex",
+    "copilot",
+    "gemini",
+    "cursor",
+    "aider",
+    "opencode",
+    "goose"
+  ],
   "license": "MIT",
   "type": "module",
   "bin": {
-    "claude-resume": "bin/claude-resume.js"
+    "agent-resume": "bin/agent-resume.js"
   },
-  "files": ["bin", "lib", "README.md", "LICENSE"],
+  "files": [
+    "bin",
+    "lib",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "test": "node --test"
   },
