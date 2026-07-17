@@ -22,8 +22,9 @@ function makeIo() {
 function makeEnv({ withClaude = true } = {}) {
   const binDir = mkdtempSync(join(tmpdir(), 'agent-resume-wiz-bin-'));
   if (withClaude) {
-    const bin = join(binDir, 'claude');
-    writeFileSync(bin, '#!/bin/sh\nexit 0\n');
+    // Windows resolves executables through PATHEXT, so fake a .cmd shim there.
+    const bin = process.platform === 'win32' ? join(binDir, 'claude.cmd') : join(binDir, 'claude');
+    writeFileSync(bin, process.platform === 'win32' ? '@echo off\r\n' : '#!/bin/sh\nexit 0\n');
     chmodSync(bin, 0o755);
   }
   const home = mkdtempSync(join(tmpdir(), 'agent-resume-wiz-home-'));
