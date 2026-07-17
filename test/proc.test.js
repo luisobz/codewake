@@ -37,7 +37,7 @@ test('spawnAgent runs regular executables directly', async () => {
 test('spawnAgent runs .cmd shims through cmd.exe with escaped arguments', {
   skip: process.platform !== 'win32',
 }, async () => {
-  const dir = mkdtempSync(join(tmpdir(), 'agent-resume-shim-'));
+  const dir = mkdtempSync(join(tmpdir(), 'codewake-shim-'));
   const shim = join(dir, 'echo-args.cmd');
   writeFileSync(shim, '@echo off\r\necho %*\r\n');
   const child = spawnAgent(shim, ['hello world', 'a&b'], { stdio: ['ignore', 'pipe', 'pipe'] });

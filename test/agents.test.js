@@ -92,14 +92,14 @@ test('commandPreview quotes arguments containing spaces', () => {
 });
 
 test('which finds executables on a custom PATH', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'agent-resume-which-'));
+  const dir = mkdtempSync(join(tmpdir(), 'codewake-which-'));
   const bin = makeFakeBin(dir, 'claude');
   assert.equal(which('claude', { PATH: dir }), bin);
   assert.equal(which('nope', { PATH: dir }), null);
 });
 
 test('detectAgents reports installed and missing agents', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'agent-resume-detect-'));
+  const dir = mkdtempSync(join(tmpdir(), 'codewake-detect-'));
   const claudeBin = makeFakeBin(dir, 'claude');
   const codexBin = makeFakeBin(dir, 'codex');
   const detected = detectAgents(BUILTIN_AGENTS, { env: { PATH: dir } });
@@ -109,17 +109,17 @@ test('detectAgents reports installed and missing agents', () => {
   assert.equal(byId.gemini, null);
 });
 
-test('AGENT_RESUME_BIN_<ID> overrides detection', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'agent-resume-override-'));
+test('CODEWAKE_BIN_<ID> overrides detection', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'codewake-override-'));
   const custom = makeFakeBin(dir, 'my-claude');
   const detected = detectAgents(BUILTIN_AGENTS, {
-    env: { PATH: '/nonexistent', AGENT_RESUME_BIN_CLAUDE: custom },
+    env: { PATH: '/nonexistent', CODEWAKE_BIN_CLAUDE: custom },
   });
   assert.equal(detected.find(({ agent }) => agent.id === 'claude').bin, custom);
 });
 
 test('loadAgents merges user config: overrides, additions and disabling', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'agent-resume-config-'));
+  const dir = mkdtempSync(join(tmpdir(), 'codewake-config-'));
   const config = join(dir, 'config.json');
   writeFileSync(config, JSON.stringify({
     agents: [
@@ -128,7 +128,7 @@ test('loadAgents merges user config: overrides, additions and disabling', () => 
     ],
     disabled: ['amp'],
   }));
-  const agents = loadAgents({ env: { AGENT_RESUME_CONFIG: config } });
+  const agents = loadAgents({ env: { CODEWAKE_CONFIG: config } });
   const claudeMerged = agents.find((agent) => agent.id === 'claude');
   assert.deepEqual(claudeMerged.bins, ['claude-nightly']);
   assert.equal(claudeMerged.name, 'Claude Code');
@@ -137,15 +137,15 @@ test('loadAgents merges user config: overrides, additions and disabling', () => 
 });
 
 test('loadAgents rejects malformed custom agents', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'agent-resume-badconfig-'));
+  const dir = mkdtempSync(join(tmpdir(), 'codewake-badconfig-'));
   const config = join(dir, 'config.json');
   writeFileSync(config, JSON.stringify({ agents: [{ id: 'broken', name: 'Broken', bins: ['x'] }] }));
-  assert.throws(() => loadAgents({ env: { AGENT_RESUME_CONFIG: config } }), /"resume" or "create"/);
+  assert.throws(() => loadAgents({ env: { CODEWAKE_CONFIG: config } }), /"resume" or "create"/);
 });
 
 test('loadAgents without a config file returns the built-ins', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'agent-resume-noconfig-'));
+  const dir = mkdtempSync(join(tmpdir(), 'codewake-noconfig-'));
   mkdirSync(join(dir, 'empty'), { recursive: true });
-  const agents = loadAgents({ env: { AGENT_RESUME_CONFIG: join(dir, 'missing.json') } });
+  const agents = loadAgents({ env: { CODEWAKE_CONFIG: join(dir, 'missing.json') } });
   assert.equal(agents.length, BUILTIN_AGENTS.length);
 });

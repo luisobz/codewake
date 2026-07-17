@@ -20,20 +20,20 @@ function makeIo() {
 }
 
 function makeEnv({ withClaude = true } = {}) {
-  const binDir = mkdtempSync(join(tmpdir(), 'agent-resume-wiz-bin-'));
+  const binDir = mkdtempSync(join(tmpdir(), 'codewake-wiz-bin-'));
   if (withClaude) {
     // Windows resolves executables through PATHEXT, so fake a .cmd shim there.
     const bin = process.platform === 'win32' ? join(binDir, 'claude.cmd') : join(binDir, 'claude');
     writeFileSync(bin, process.platform === 'win32' ? '@echo off\r\n' : '#!/bin/sh\nexit 0\n');
     chmodSync(bin, 0o755);
   }
-  const home = mkdtempSync(join(tmpdir(), 'agent-resume-wiz-home-'));
+  const home = mkdtempSync(join(tmpdir(), 'codewake-wiz-home-'));
   return {
     PATH: binDir,
     HOME: home,
-    AGENT_RESUME_STATE_DIR: mkdtempSync(join(tmpdir(), 'agent-resume-wiz-state-')),
-    AGENT_RESUME_BACKEND: 'spawn',
-    AGENT_RESUME_CONFIG: join(home, 'missing-config.json'),
+    CODEWAKE_STATE_DIR: mkdtempSync(join(tmpdir(), 'codewake-wiz-state-')),
+    CODEWAKE_BACKEND: 'spawn',
+    CODEWAKE_CONFIG: join(home, 'missing-config.json'),
   };
 }
 

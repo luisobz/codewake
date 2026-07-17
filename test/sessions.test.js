@@ -9,7 +9,7 @@ import { BUILTIN_AGENTS } from '../lib/registry.js';
 const byId = Object.fromEntries(BUILTIN_AGENTS.map((agent) => [agent.id, agent]));
 
 function makeHome() {
-  return mkdtempSync(join(tmpdir(), 'agent-resume-home-'));
+  return mkdtempSync(join(tmpdir(), 'codewake-home-'));
 }
 
 test('encodeClaudeProject matches Claude Code path encoding', () => {
@@ -18,7 +18,7 @@ test('encodeClaudeProject matches Claude Code path encoding', () => {
 
 test('claude sessions are read from the encoded project directory', () => {
   const home = makeHome();
-  const project = mkdtempSync(join(tmpdir(), 'agent-resume-project-'));
+  const project = mkdtempSync(join(tmpdir(), 'codewake-project-'));
   const dir = join(home, '.claude', 'projects', encodeClaudeProject(project));
   mkdirSync(dir, { recursive: true });
 
@@ -41,7 +41,7 @@ test('claude sessions are read from the encoded project directory', () => {
 
 test('claude sessions in other projects are not listed', () => {
   const home = makeHome();
-  const project = mkdtempSync(join(tmpdir(), 'agent-resume-project-'));
+  const project = mkdtempSync(join(tmpdir(), 'codewake-project-'));
   const dir = join(home, '.claude', 'projects', encodeClaudeProject(`${project}-other`));
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, 'x.jsonl'), JSON.stringify({ type: 'summary', summary: 'other' }));
@@ -50,7 +50,7 @@ test('claude sessions in other projects are not listed', () => {
 
 test('codex rollouts are discovered recursively and filtered by cwd', () => {
   const home = makeHome();
-  const project = mkdtempSync(join(tmpdir(), 'agent-resume-project-'));
+  const project = mkdtempSync(join(tmpdir(), 'codewake-project-'));
   const day = join(home, '.codex', 'sessions', '2026', '07', '15');
   mkdirSync(day, { recursive: true });
   writeFileSync(
@@ -80,7 +80,7 @@ test('codex rollouts fall back to the filename id when meta is unparsable', () =
 });
 
 test('aider exposes the project history as a single pseudo-session', () => {
-  const project = mkdtempSync(join(tmpdir(), 'agent-resume-aider-'));
+  const project = mkdtempSync(join(tmpdir(), 'codewake-aider-'));
   assert.deepEqual(listSessions(byId.aider, { project, home: makeHome() }), []);
   writeFileSync(join(project, '.aider.chat.history.md'), '# chat\n');
   const sessions = listSessions(byId.aider, { project, home: makeHome() });

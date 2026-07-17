@@ -1,8 +1,8 @@
-# agent-resume
+# codewake
 
 **Schedule your coding agents to pick up where they left off.**
 
-`agent-resume` is an interactive CLI that detects the coding agents installed on your machine — Claude Code, OpenAI Codex CLI, GitHub Copilot CLI, Gemini CLI, Cursor CLI, OpenCode, Aider, Goose, Amp, Qwen Code — lets you pick a session (or start a new one), choose a prompt, and launches the agent at the time you choose. Hit a usage limit at 2 AM? Schedule the resume for when it resets and go to sleep.
+`codewake` is an interactive CLI that detects the coding agents installed on your machine — Claude Code, OpenAI Codex CLI, GitHub Copilot CLI, Gemini CLI, Cursor CLI, OpenCode, Aider, Goose, Amp, Qwen Code — lets you pick a session (or start a new one), choose a prompt, and launches the agent at the time you choose. Hit a usage limit at 2 AM? Schedule the resume for when it resets and go to sleep.
 
 - **Interactive console** — arrow keys, sensible defaults, a summary before anything is scheduled.
 - **Agent auto-detection** — scans your `PATH` for every supported agent; extend or override the list with a small JSON config.
@@ -15,7 +15,7 @@
 ## Install
 
 ```bash
-npm install --global agent-resume
+npm install --global codewake
 ```
 
 Or from a checkout of this repository:
@@ -27,7 +27,7 @@ npm link
 ## Quick start
 
 ```bash
-agent-resume
+codewake
 ```
 
 The console walks you through it:
@@ -61,14 +61,14 @@ Summary
 
 ## Managing jobs
 
-From the console (`agent-resume`) or directly:
+From the console (`codewake`) or directly:
 
 ```bash
-agent-resume jobs             # list scheduled and finished jobs
-agent-resume logs <job-id>    # output captured from the agent run
-agent-resume cancel <job-id>  # cancel a pending job
-agent-resume clear            # drop finished/cancelled jobs from the list
-agent-resume agents           # which agents were detected, and where
+codewake jobs             # list scheduled and finished jobs
+codewake logs <job-id>    # output captured from the agent run
+codewake cancel <job-id>  # cancel a pending job
+codewake clear            # drop finished/cancelled jobs from the list
+codewake agents           # which agents were detected, and where
 ```
 
 ## Non-interactive scheduling
@@ -76,9 +76,9 @@ agent-resume agents           # which agents were detected, and where
 Everything the console does is available as flags — handy for scripts:
 
 ```bash
-agent-resume schedule --agent claude --session 550e8400 --in 2h30m
-agent-resume schedule --agent codex --new --prompt "run the test suite and fix failures" --at 06:00 --skip-permissions
-agent-resume schedule --agent claude --session refactor-api --now --dry-run
+codewake schedule --agent claude --session 550e8400 --in 2h30m
+codewake schedule --agent codex --new --prompt "run the test suite and fix failures" --at 06:00 --skip-permissions
+codewake schedule --agent claude --session refactor-api --now --dry-run
 ```
 
 `--dry-run` prints the exact command without scheduling anything.
@@ -102,7 +102,7 @@ Agent CLIs move fast. If a flag changes upstream, or you use an agent we don't k
 
 ## Custom agents
 
-Add or override agents in `~/.config/agent-resume/config.json` (or point `AGENT_RESUME_CONFIG` somewhere else). Entries have the same shape as the built-in registry (`lib/registry.js`):
+Add or override agents in `~/.config/codewake/config.json` (or point `CODEWAKE_CONFIG` somewhere else). Entries have the same shape as the built-in registry (`lib/registry.js`):
 
 ```json
 {
@@ -120,34 +120,34 @@ Add or override agents in `~/.config/agent-resume/config.json` (or point `AGENT_
 }
 ```
 
-`{session}` and `{prompt}` are substituted as whole argv elements — commands are spawned directly, never through a shell. `AGENT_RESUME_BIN_<ID>` (e.g. `AGENT_RESUME_BIN_CLAUDE=/opt/claude`) overrides detection for a single agent.
+`{session}` and `{prompt}` are substituted as whole argv elements — commands are spawned directly, never through a shell. `CODEWAKE_BIN_<ID>` (e.g. `CODEWAKE_BIN_CLAUDE=/opt/claude`) overrides detection for a single agent.
 
 ## How scheduling works
 
 - On **Linux with systemd**, jobs are armed with a transient user timer (`systemd-run --user --on-calendar=…`). Wall-clock timers keep ticking through laptop suspend and fire on resume if their time passed while the lid was closed. They survive the terminal closing; if your machine logs you out completely, enable lingering once: `loginctl enable-linger "$USER"`.
 - On **macOS, Windows, and Linux without systemd**, a small detached Node process waits for the launch time. It re-checks the wall clock every minute rather than sleeping once, so a machine that suspends overnight launches the job right after waking instead of drifting by the suspended time. It survives the terminal closing, but not a reboot.
 
-A session can only have **one pending job** at a time — scheduling a second resume for the same session is refused until you cancel the first, so two agents never race each other over one transcript. Jobs whose launch time passed without running (e.g. after a reboot) show up as `overdue` in `agent-resume jobs`, with how late they are — reschedule them.
+A session can only have **one pending job** at a time — scheduling a second resume for the same session is refused until you cancel the first, so two agents never race each other over one transcript. Jobs whose launch time passed without running (e.g. after a reboot) show up as `overdue` in `codewake jobs`, with how late they are — reschedule them.
 
 ### Where state and logs live
 
 | OS | Job state | Execution logs |
 | --- | --- | --- |
-| Linux | `~/.local/state/agent-resume/` | `~/.local/state/agent-resume/logs/` |
-| macOS | `~/Library/Application Support/agent-resume/` | `~/Library/Logs/agent-resume/` |
-| Windows | `%LOCALAPPDATA%\agent-resume\` | `%LOCALAPPDATA%\agent-resume\Logs\` |
+| Linux | `~/.local/state/codewake/` | `~/.local/state/codewake/logs/` |
+| macOS | `~/Library/Application Support/codewake/` | `~/Library/Logs/codewake/` |
+| Windows | `%LOCALAPPDATA%\codewake\` | `%LOCALAPPDATA%\codewake\Logs\` |
 
-Every job run captures the agent's stdout/stderr to `<job-id>.log`, readable with `agent-resume logs <job-id>`. `AGENT_RESUME_STATE_DIR` overrides the state location (logs move under `<dir>/logs`). On Windows, npm-installed agents (`.cmd` shims) are launched through `cmd.exe` with every argument escaped — never an interpolated shell string.
+Every job run captures the agent's stdout/stderr to `<job-id>.log`, readable with `codewake logs <job-id>`. `CODEWAKE_STATE_DIR` overrides the state location (logs move under `<dir>/logs`). On Windows, npm-installed agents (`.cmd` shims) are launched through `cmd.exe` with every argument escaped — never an interpolated shell string.
 
 ## A word about unattended runs
 
-Choosing *skip permissions* passes the agent's own bypass flag (for example `--dangerously-skip-permissions` for Claude Code). The agent will edit files and run commands without asking. Only schedule projects you trust, review the prompt before confirming, and keep your work under version control. `agent-resume` always shows the exact command in the summary and defaults to **not** skipping permissions.
+Choosing *skip permissions* passes the agent's own bypass flag (for example `--dangerously-skip-permissions` for Claude Code). The agent will edit files and run commands without asking. Only schedule projects you trust, review the prompt before confirming, and keep your work under version control. `codewake` always shows the exact command in the summary and defaults to **not** skipping permissions.
 
 ## Development
 
 ```bash
 npm test                        # zero-dependency test suite (node --test)
-node bin/agent-resume.js        # run the console from the checkout
+node bin/codewake.js        # run the console from the checkout
 ```
 
 The test suite covers argument parsing, duration/time parsing, the agent registry, command building, session discovery (with fixtures), the job store and both scheduling backends, and the interactive console end to end (driven through fake terminals).
@@ -155,3 +155,5 @@ The test suite covers argument parsing, duration/time parsing, the agent registr
 ## License
 
 MIT
+
+This is a new line for testing purposes.

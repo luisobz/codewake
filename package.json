@@ -1,12 +1,13 @@
 {
-  "name": "agent-resume",
-  "version": "1.0.0",
-  "description": "Interactive CLI to schedule your coding agents (Claude Code, Codex, Copilot, Gemini, Cursor, Aider, ...) to resume a session or start a new one at the time you choose.",
+  "name": "codewake",
+  "version": "0.0.1",
+  "description": "Interactive CLI to schedule your coding agents (Claude Code, Codex, Copilot, Gemini, Cursor, Aider, ...) to wake up and pick up where they left off.",
   "keywords": [
     "cli",
     "agents",
     "scheduler",
     "resume",
+    "codewake",
     "claude-code",
     "codex",
     "copilot",
@@ -19,7 +20,7 @@
   "license": "MIT",
   "type": "module",
   "bin": {
-    "agent-resume": "bin/agent-resume.js"
+    "codewake": "bin/codewake.js"
   },
   "files": [
     "bin",
@@ -28,10 +29,14 @@
     "LICENSE"
   ],
   "scripts": {
-    "test": "node --test"
+    "test": "node --test",
+    "update:version": "npm version patch --no-git-tag-version",
+    "build": "node -e \"\"",
+    "publish:npm": "pnpm run test && pnpm run update:version && pnpm run build && pnpm publish --access public",
+    "git:tag": "git commit -am \"v$npm_package_version\" && git push origin main && git tag v$npm_package_version && git push origin v$npm_package_version"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=24"
   },
   "os": [
     "linux",
@@ -40,10 +45,10 @@
   ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/luisobz/agent-resume.git"
+    "url": "git+https://github.com/luisobz/codewake.git"
   },
   "bugs": {
-    "url": "https://github.com/luisobz/agent-resume/issues"
+    "url": "https://github.com/luisobz/codewake/issues"
   },
-  "homepage": "https://github.com/luisobz/agent-resume#readme"
+  "homepage": "https://github.com/luisobz/codewake#readme"
 }
