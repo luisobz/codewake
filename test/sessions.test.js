@@ -1,9 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, utimesSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { encodeClaudeProject, listSessions } from '../lib/sessions.js';
+import {
+  encodeClaudeProject,
+  listSessions,
+  locateSession,
+  resolveSessionPlacement,
+} from '../lib/sessions.js';
 import { BUILTIN_AGENTS } from '../lib/registry.js';
 
 const byId = Object.fromEntries(BUILTIN_AGENTS.map((agent) => [agent.id, agent]));
@@ -97,4 +102,93 @@ test('session discovery never throws on unreadable state', () => {
   const home = join(makeHome(), 'does-not-exist');
   assert.deepEqual(listSessions(byId.claude, { project: '/x', home }), []);
   assert.deepEqual(listSessions(byId.codex, { project: '/x', home }), []);
+});
+
+// --- locateSession / resolveSessionPlacement ---
+
+function makeClaudeSession(home, project, sessionId, cwd = project) {
+  const dir = join(home, '.claude', 'projects', encodeClaudeProject(project));
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, `${sessionId}.jsonl`), [
+    JSON.stringify({ type: 'file-history-snapshot' }),
+    JSON.stringify({ type: 'user', cwd, message: { content: 'hola' } }),
+  ].join('\n'));
+}
+
+test('locateSession finds a claude session in any project and recovers its cwd', () => {
+  const home = makeHome();
+  const realProject = mkdtempSync(join(tmpdir(), 'codewake-real-'));
+  makeClaudeSession(home, realProject, 'f456f2d4-aaaa');
+  assert.deepEqual(
+    locateSession(byId.claude, 'f456f2d4-aaaa', { home }),
+    { found: true, project: realProject },
+  );
+  assert.deepEqual(locateSession(byId.claude, 'missing-id', { home }), { found: false });
+});
+
+test('locateSession stays neutral when it cannot search', () => {
+  const home = makeHome(); // no ~/.claude at all
+  assert.equal(locateSession(byId.claude, 'anything', { home }), null);
+  assert.equal(locateSession(byId.cursor, 'anything', { home }), null); // manual strategy
+  assert.equal(locateSession(byId.claude, '../escape', { home }), null); // hostile id
+});
+
+test('locateSession matches codex rollouts by id', () => {
+  const home = makeHome();
+  const day = join(home, '.codex', 'sessions', '2026', '07', '15');
+  mkdirSync(day, { recursive: true });
+  writeFileSync(
+    join(day, 'rollout-2026-07-15T10-00-00-aaaa1111.jsonl'),
+    `${JSON.stringify({ type: 'session_meta', payload: { id: 'aaaa1111', cwd: '/work/demo' } })}\n`,
+  );
+  assert.deepEqual(locateSession(byId.codex, 'aaaa1111', { home }), { found: true, project: '/work/demo' });
+  assert.deepEqual(locateSession(byId.codex, 'zzzz9999', { home }), { found: false });
+});
+
+test('resolveSessionPlacement moves the job to the directory the session lives in', () => {
+  const home = makeHome();
+  const realProject = mkdtempSync(join(tmpdir(), 'codewake-real-'));
+  const elsewhere = mkdtempSync(join(tmpdir(), 'codewake-elsewhere-'));
+  makeClaudeSession(home, realProject, 'sess-1');
+
+  const moved = resolveSessionPlacement(byId.claude, 'sess-1', { project: elsewhere, home });
+  assert.equal(moved.project, realProject);
+  assert.match(moved.note, /belongs to/);
+
+  const same = resolveSessionPlacement(byId.claude, 'sess-1', { project: realProject, home });
+  assert.equal(same.project, realProject);
+  assert.equal(same.note, null);
+});
+
+test('resolveSessionPlacement rejects a session id that exists nowhere', () => {
+  const home = makeHome();
+  mkdirSync(join(home, '.claude', 'projects'), { recursive: true });
+  assert.throws(
+    () => resolveSessionPlacement(byId.claude, 'no-such-session', { project: tmpdir(), home }),
+    /exists on this machine/,
+  );
+});
+
+test('resolveSessionPlacement rejects a session whose own directory is gone', () => {
+  const home = makeHome();
+  const realProject = mkdtempSync(join(tmpdir(), 'codewake-real-'));
+  makeClaudeSession(home, realProject, 'sess-2');
+  rmSync(realProject, { recursive: true, force: true });
+  assert.throws(
+    () => resolveSessionPlacement(byId.claude, 'sess-2', { project: tmpdir(), home }),
+    /no longer exists/,
+  );
+});
+
+test('resolveSessionPlacement keeps the project when nothing can be concluded', () => {
+  const home = makeHome();
+  const project = mkdtempSync(join(tmpdir(), 'codewake-any-'));
+  assert.deepEqual(
+    resolveSessionPlacement(byId.claude, 'whatever', { project, home }),
+    { project, note: null },
+  );
+  assert.deepEqual(
+    resolveSessionPlacement(byId.cursor, 'whatever', { project, home }),
+    { project, note: null },
+  );
 });

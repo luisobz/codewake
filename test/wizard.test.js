@@ -45,19 +45,20 @@ async function type(stdin, keys) {
   }
 }
 
-test('wizard exits from the main menu', async () => {
+test('wizard exits on a double cancel key and hints after the first', async () => {
   const io = makeIo();
   const done = runWizard({ io, env: makeEnv() });
-  await type(io.stdin, ['\x1b[B\x1b[B\x1b[B\x1b[B', '\r']); // move to Exit, enter
+  await type(io.stdin, ['\x03', '\x03']); // ctrl+c twice within 5s
   await done;
   assert.match(io.output(), /What do you want to do\?/);
+  assert.match(io.output(), /Press ctrl\+c again within 5s to exit/);
   assert.match(io.output(), /Bye!/);
 });
 
 test('wizard explains when no agents are installed', async () => {
   const io = makeIo();
   const done = runWizard({ io, env: makeEnv({ withClaude: false }) });
-  await type(io.stdin, ['\r', 'q']); // Schedule → back at menu → quit
+  await type(io.stdin, ['\r', 'q', 'q']); // Schedule → back at menu → quit
   await done;
   assert.match(io.output(), /No supported agents found/);
 });
@@ -83,7 +84,7 @@ test('wizard schedules a resume job end to end', async () => {
     '\x1b[B\r', // when: After a delay
     '45m\n', // delay value
     'y\n', // confirm summary
-    'q', // back at menu: quit
+    'q', 'q', // back at menu: quit (double cancel key)
   ]);
   await done;
 
@@ -125,7 +126,7 @@ test('wizard requires a prompt for new sessions', async () => {
     '\n', // skip permissions: default no
     '\r', // when: Right now
     'y\n', // confirm
-    'q',
+    'q', 'q',
   ]);
   await done;
   assert.match(io.output(), /This field is required/);
@@ -134,6 +135,56 @@ test('wizard requires a prompt for new sessions', async () => {
   assert.equal(jobs[0].mode, 'create');
   assert.equal(jobs[0].prompt, 'build the landing page');
   assert.equal(jobs[0].skipPermissions, false);
+});
+
+test('wizard rejects a manual session id that exists nowhere', async () => {
+  const env = makeEnv();
+  // The store exists and can be searched, so "not found" is a firm answer.
+  mkdirSync(join(env.HOME, '.claude', 'projects'), { recursive: true });
+  const io = makeIo();
+  const done = runWizard({ io, env });
+  await type(io.stdin, [
+    '\r', // Schedule
+    '\r', // Claude Code
+    '\r', // no sessions → manual id
+    'ghost-session\n',
+    'q', 'q', // back at menu after the error → quit
+  ]);
+  await done;
+  assert.match(io.output(), /exists on this machine/);
+  assert.equal(listJobs(env).length, 0);
+});
+
+test('wizard corrects the project when the session lives elsewhere', async () => {
+  const env = makeEnv();
+  const realProject = mkdtempSync(join(tmpdir(), 'codewake-wiz-real-'));
+  const dir = join(env.HOME, '.claude', 'projects', encodeClaudeProject(realProject));
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(
+    join(dir, 'sess-elsewhere.jsonl'),
+    `${JSON.stringify({ type: 'user', cwd: realProject, message: { content: 'hi' } })}\n`,
+  );
+  const io = makeIo();
+  const done = runWizard({ io, env });
+  await type(io.stdin, [
+    '\r', // Schedule
+    '\r', // Claude Code
+    '\r', // no sessions for this cwd → manual id
+    'sess-elsewhere\n',
+    '\n', // default prompt
+    '\n', // permissions default no
+    '\x1b[B\r', // After a delay
+    '1h\n',
+    'y\n', // confirm
+    'q', 'q',
+  ]);
+  await done;
+  assert.match(io.output(), /belongs to/);
+  const jobs = listJobs(env);
+  assert.equal(jobs.length, 1);
+  assert.equal(jobs[0].project, realProject);
+  const { cancelJob } = await import('../lib/jobs.js');
+  cancelJob(jobs[0].id, env);
 });
 
 test('wizard refuses a second job for the same session', async () => {
@@ -155,7 +206,7 @@ test('wizard refuses a second job for the same session', async () => {
     '\r', // Claude Code
     '\r', // manual id
     'sess-dup\n',
-    'q', // back at menu after the warning → quit
+    'q', 'q', // back at menu after the warning → quit
   ]);
   await done;
   assert.match(io.output(), /already has a pending job/);
@@ -165,12 +216,12 @@ test('wizard refuses a second job for the same session', async () => {
   cancelJob(jobs[0].id, env);
 });
 
-test('wizard lists and cancels jobs from the menu', async () => {
+test('wizard browses, cancels and sweeps jobs in Waked agents', async () => {
   const env = makeEnv();
   const io = makeIo();
   const done = runWizard({ io, env });
   await type(io.stdin, [
-    '\r', // Schedule
+    '\r', // Schedule / wake an agent
     '\r', // Claude Code
     '\r', // no sessions → "Enter a session id manually" is first
     'manual-session-1\n',
@@ -179,16 +230,19 @@ test('wizard lists and cancels jobs from the menu', async () => {
     '\x1b[B\r', // After a delay
     '2h\n',
     'y\n', // confirm
-    '\x1b[B\r', // menu: View jobs
-    '\x1b[B\x1b[B\r', // menu: Cancel a job
-    '\r', // pick the only job
+    '\x1b[B\r', // menu: Waked agents
+    'x', // cancel the selected job
     '\n', // confirm cancel (default yes)
-    'q', // quit
+    's', // sweep finished jobs
+    '\n', // confirm sweep (default yes)
+    'q', // browser → back to menu
+    'q', 'q', // double cancel key → exit
   ]);
   await done;
+  assert.match(io.output(), /Waked agents/);
   assert.match(io.output(), /ID\s+AGENT\s+STATUS/);
   assert.match(io.output(), /manual-sessi/);
-  const jobs = listJobs(env);
-  assert.equal(jobs.length, 1);
-  assert.equal(jobs[0].status, 'cancelled');
+  assert.match(io.output(), /Cancelled/);
+  assert.match(io.output(), /Removed 1 job/);
+  assert.equal(listJobs(env).length, 0);
 });

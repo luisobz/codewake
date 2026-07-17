@@ -43,11 +43,34 @@ test('select wraps around the list edges', async () => {
   assert.equal(await picked, 'c');
 });
 
-test('select resolves null on ctrl+c', async () => {
+test('select resolves null on ctrl+c and ctrl+d', async () => {
   const io = makeIo();
   const picked = select('Pick one', ['a', 'b'], io);
   io.stdin.write('\x03');
   assert.equal(await picked, null);
+
+  const io2 = makeIo();
+  const picked2 = select('Pick one', ['a', 'b'], io2);
+  io2.stdin.write('\x04');
+  assert.equal(await picked2, null);
+});
+
+test('select reports the cancelling key when asked to', async () => {
+  const io = makeIo();
+  const picked = select('Pick one', ['a'], { ...io, cancelInfo: true });
+  io.stdin.write('\x03');
+  assert.deepEqual(await picked, { cancelled: true, key: 'ctrl+c' });
+
+  const io2 = makeIo();
+  const picked2 = select('Pick one', ['a'], { ...io2, cancelInfo: true });
+  io2.stdin.write('q');
+  assert.deepEqual(await picked2, { cancelled: true, key: 'q' });
+
+  // Without cancelInfo the classic null contract stands.
+  const io3 = makeIo();
+  const picked3 = select('Pick one', ['a'], io3);
+  io3.stdin.write('\x1b');
+  assert.equal(await picked3, null);
 });
 
 test('select paginates long lists', async () => {

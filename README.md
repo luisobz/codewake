@@ -4,9 +4,11 @@
 
 `codewake` is an interactive CLI that detects the coding agents installed on your machine — Claude Code, OpenAI Codex CLI, GitHub Copilot CLI, Gemini CLI, Cursor CLI, OpenCode, Aider, Goose, Amp, Qwen Code — lets you pick a session (or start a new one), choose a prompt, and launches the agent at the time you choose. Hit a usage limit at 2 AM? Schedule the resume for when it resets and go to sleep.
 
-- **Interactive console** — arrow keys, sensible defaults, a summary before anything is scheduled.
+- **Interactive console** — two entries: *Schedule / wake an agent* and *Waked agents*, a job browser with agent/text filters where every action is one key (open, retry, cancel, sweep) and the shortcuts are always visible. Leave with a double ctrl+c/ctrl+d.
+- **Open a job's session** — jump from any job straight into the agent's own terminal UI (`claude --resume …`, `codex resume …`, …) to watch or take over what the agent did.
 - **Agent auto-detection** — scans your `PATH` for every supported agent; extend or override the list with a small JSON config.
 - **Session discovery** — lists your existing Claude Code and Codex sessions (with titles and timestamps) for the current project; other agents accept a session id or start fresh.
+- **Right-place resumes** — agents like Claude Code can only resume a session from the project directory it belongs to. codewake locates the session across all your projects and runs the job from the right directory (and tells you), instead of failing later with "No conversation found". If the project moved between scheduling and launch, the job follows it.
 - **Job management** — list, inspect logs, cancel, and clean up scheduled jobs from the console or with subcommands.
 - **Suspend-safe scheduling** — timers track the wall clock, so a laptop that sleeps through the launch time fires the job right after waking instead of drifting.
 - **Cross-platform** — Linux (systemd user timers), macOS, and Windows (detached waiter, `.cmd`-shim aware); CI runs on all three.
@@ -65,11 +67,16 @@ From the console (`codewake`) or directly:
 
 ```bash
 codewake jobs             # list scheduled and finished jobs
-codewake logs <job-id>    # output captured from the agent run
+codewake open <job-id>    # reopen the job's session in its agent's own UI
+codewake logs <job-id>    # job status plus the output captured from the run
 codewake cancel <job-id>  # cancel a pending job
+codewake retry <job-id>   # reschedule a failed/finished/overdue job
+                          #   (--now, --in, --at, --prompt, --project)
 codewake clear            # drop finished/cancelled jobs from the list
 codewake agents           # which agents were detected, and where
 ```
+
+Or interactively: `codewake` → **Waked agents** browses every job — `↑↓` move, `enter` opens the session in the agent's own terminal, `r` retries (asks when + prompt), `x` cancels, `s` sweeps finished jobs, `f` filters by agent, `/` searches, `esc` goes back. The shortcut bar at the bottom always shows what each key does.
 
 ## Non-interactive scheduling
 
@@ -127,7 +134,7 @@ Add or override agents in `~/.config/codewake/config.json` (or point `CODEWAKE_C
 - On **Linux with systemd**, jobs are armed with a transient user timer (`systemd-run --user --on-calendar=…`). Wall-clock timers keep ticking through laptop suspend and fire on resume if their time passed while the lid was closed. They survive the terminal closing; if your machine logs you out completely, enable lingering once: `loginctl enable-linger "$USER"`.
 - On **macOS, Windows, and Linux without systemd**, a small detached Node process waits for the launch time. It re-checks the wall clock every minute rather than sleeping once, so a machine that suspends overnight launches the job right after waking instead of drifting by the suspended time. It survives the terminal closing, but not a reboot.
 
-A session can only have **one pending job** at a time — scheduling a second resume for the same session is refused until you cancel the first, so two agents never race each other over one transcript. Jobs whose launch time passed without running (e.g. after a reboot) show up as `overdue` in `codewake jobs`, with how late they are — reschedule them.
+A session can only have **one pending job** at a time — scheduling a second resume for the same session is refused until you cancel the first, so two agents never race each other over one transcript. Jobs whose launch time passed without running (e.g. after a reboot) show up as `overdue` in `codewake jobs` — reschedule them with `codewake retry <job-id>`.
 
 ### Where state and logs live
 
@@ -155,5 +162,3 @@ The test suite covers argument parsing, duration/time parsing, the agent registr
 ## License
 
 MIT
-
-This is a new line for testing purposes.

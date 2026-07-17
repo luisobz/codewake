@@ -1,8 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { chmodSync, existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
+import { encodeClaudeProject } from '../lib/sessions.js';
 import {
   cancelJob,
   clearJobs,
@@ -76,12 +77,51 @@ test('runJob marks failures with the exit code', async () => {
   assert.equal(finished.exitCode, 3);
 });
 
-test('runJob survives a missing executable', async () => {
+test('runJob survives a missing executable and logs the reason', async () => {
   const env = makeEnv();
   const job = saveJob(scheduleJob(spec({ bin: '/nonexistent/agent' }), { dryRun: true, env }), env);
   const finished = await runJob(job.id, env);
   assert.equal(finished.status, 'failed');
   assert.ok(finished.error);
+  assert.match(readFileSync(logFile(job.id, env), 'utf8'), /codewake: /);
+});
+
+test('runJob fails with a clear error when the project directory vanished', async () => {
+  const env = makeEnv();
+  const project = mkdtempSync(join(tmpdir(), 'codewake-gone-'));
+  const job = saveJob(
+    scheduleJob(spec({ project, mode: 'create', sessionId: null }), { dryRun: true, env }),
+    env,
+  );
+  rmSync(project, { recursive: true, force: true });
+  const finished = await runJob(job.id, env);
+  assert.equal(finished.status, 'failed');
+  assert.match(finished.error, /no longer exists/);
+  assert.match(readFileSync(logFile(job.id, env), 'utf8'), /no longer exists/);
+});
+
+test('runJob relaunches a resume job from the directory its session lives in', async () => {
+  // The project was renamed between scheduling and firing; the session store
+  // still knows the real directory, so the job must follow it.
+  const env = makeEnv();
+  env.HOME = mkdtempSync(join(tmpdir(), 'codewake-run-home-'));
+  env.CODEWAKE_CONFIG = join(env.HOME, 'missing-config.json');
+  const realProject = mkdtempSync(join(tmpdir(), 'codewake-run-real-'));
+  const staleProject = mkdtempSync(join(tmpdir(), 'codewake-run-stale-'));
+  const dir = join(env.HOME, '.claude', 'projects', encodeClaudeProject(realProject));
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(
+    join(dir, 'sess-reloc.jsonl'),
+    `${JSON.stringify({ type: 'user', cwd: realProject, message: { content: 'hi' } })}\n`,
+  );
+  const job = saveJob(
+    scheduleJob(spec({ sessionId: 'sess-reloc', project: staleProject }), { dryRun: true, env }),
+    env,
+  );
+  const finished = await runJob(job.id, env);
+  assert.equal(finished.status, 'done');
+  assert.equal(finished.project, realProject);
+  assert.match(readFileSync(logFile(job.id, env), 'utf8'), /codewake: Session sess-reloc belongs to/);
 });
 
 test('waitJob runs a due job and skips cancelled ones', async () => {
@@ -246,6 +286,8 @@ test('systemd backend arms an on-calendar transient timer', { skip: onWindows },
   const args = readFileSync(fake.capture, 'utf8').split('\n');
   assert.ok(args.includes(`--unit=codewake-${job.id}`));
   assert.ok(args.some((arg) => /^--on-calendar=\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(arg)));
+  // The transient unit does not inherit the scheduler's environment.
+  assert.ok(args.includes(`--setenv=CODEWAKE_STATE_DIR=${env.CODEWAKE_STATE_DIR}`));
   assert.ok(args.includes('--run'));
   assert.ok(args.includes(job.id));
 });

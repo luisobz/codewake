@@ -1,6 +1,6 @@
 {
   "name": "codewake",
-  "version": "0.0.1",
+  "version": "0.0.2",
   "description": "Interactive CLI to schedule your coding agents (Claude Code, Codex, Copilot, Gemini, Cursor, Aider, ...) to wake up and pick up where they left off.",
   "keywords": [
     "cli",

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseArgs, resolveRunAt, usage } from '../lib/cli.js';
+import { resolve } from 'node:path';
+import { describeJobHeader, parseArgs, resolveRunAt, usage } from '../lib/cli.js';
 import { renderJobsTable, shortenPath } from '../lib/wizard.js';
 
 test('no arguments opens the interactive console', () => {
@@ -64,6 +65,56 @@ test('schedule validates flag combinations', () => {
   );
 });
 
+test('retry parses the job id and its timing flags', () => {
+  assert.deepEqual(parseArgs(['retry', 'abc']), {
+    command: 'retry',
+    jobId: 'abc',
+    when: { type: 'now' },
+    prompt: null,
+    project: null,
+    dryRun: false,
+  });
+  const args = parseArgs(['retry', 'abc', '--in', '5s', '--prompt', 'keep going', '--project', '/tmp/x', '--dry-run']);
+  assert.deepEqual(args.when, { type: 'in', value: '5s' });
+  assert.equal(args.prompt, 'keep going');
+  assert.equal(args.project, resolve('/tmp/x'));
+  assert.equal(args.dryRun, true);
+  assert.throws(() => parseArgs(['retry']), /retry <job-id>/);
+  assert.throws(() => parseArgs(['retry', 'abc', '--frobnicate']), /Unknown option/);
+  assert.throws(() => parseArgs(['retry', 'abc', '--in']), /--in needs a value/);
+});
+
+test('open parses and requires a job id', () => {
+  assert.deepEqual(parseArgs(['open', 'abc']), { command: 'open', jobId: 'abc' });
+  assert.throws(() => parseArgs(['open']), /open <job-id>/);
+});
+
+test('describeJobHeader summarizes status, timing and errors', () => {
+  const failed = {
+    id: 'job-9',
+    agentName: 'Claude Code',
+    status: 'failed',
+    exitCode: 1,
+    runAt: new Date().toISOString(),
+    startedAt: new Date().toISOString(),
+    project: '/work/demo',
+    error: 'something broke',
+  };
+  const header = describeJobHeader(failed);
+  assert.match(header, /job-9 · Claude Code · failed \(exit 1\)/);
+  assert.match(header, /started .* in \/work\/demo/);
+  assert.match(header, /error: something broke/);
+
+  const pending = {
+    id: 'job-2',
+    agentName: 'Goose',
+    status: 'pending',
+    runAt: new Date(Date.now() + 60_000).toISOString(),
+    project: '/work/demo',
+  };
+  assert.match(describeJobHeader(pending), /pending[\s\S]*scheduled for/);
+});
+
 test('resolveRunAt handles now, delays and clock times', () => {
   const now = new Date('2026-07-16T10:00:00');
   assert.equal(resolveRunAt({ type: 'now' }, now).getTime(), now.getTime());
@@ -78,7 +129,7 @@ test('resolveRunAt handles now, delays and clock times', () => {
 
 test('usage mentions every command', () => {
   const text = usage();
-  for (const command of ['jobs', 'logs', 'cancel', 'clear', 'agents', 'schedule', '--dry-run']) {
+  for (const command of ['jobs', 'open', 'logs', 'cancel', 'retry', 'clear', 'agents', 'schedule', '--dry-run']) {
     assert.ok(text.includes(command), `usage mentions ${command}`);
   }
 });

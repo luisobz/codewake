@@ -29,7 +29,7 @@ test('registry entries are well-formed', () => {
     assert.ok(agent.id && agent.name, `${agent.id} has id and name`);
     assert.ok(agent.bins.length, `${agent.id} has bins`);
     assert.ok(agent.resume || agent.create, `${agent.id} has a command spec`);
-    for (const spec of [agent.resume, agent.create].filter(Boolean)) {
+    for (const spec of [agent.resume, agent.create, agent.open].filter(Boolean)) {
       assert.ok(Array.isArray(spec.args) && spec.args.length);
     }
     if (agent.resume) {
@@ -81,6 +81,15 @@ test('buildCommand refuses unsupported modes with a clear message', () => {
   assert.throws(
     () => buildCommand(gemini, { mode: 'resume', sessionId: 's', prompt: 'p' }),
     /does not support resuming/,
+  );
+});
+
+test('buildCommand opens sessions in the agent\'s own UI', () => {
+  assert.deepEqual(buildCommand(claude, { mode: 'open', sessionId: 'abc' }), ['--resume', 'abc']);
+  assert.deepEqual(buildCommand(codex, { mode: 'open', sessionId: 'abc' }), ['resume', 'abc']);
+  assert.throws(
+    () => buildCommand(gemini, { mode: 'open', sessionId: 'abc' }),
+    /does not support opening/,
   );
 });
 
