@@ -32,7 +32,7 @@
     "test": "node --test",
     "update:version": "npm version patch --no-git-tag-version",
     "build": "node -e \"\"",
-    "publish:npm": "pnpm run test && pnpm run update:version && pnpm run build && pnpm publish --access public",
+    "publish:npm": "pnpm run test && pnpm run build && pnpm publish --access public",
     "git:tag": "git commit -am \"v$npm_package_version\" && git push origin main && git tag v$npm_package_version && git push origin v$npm_package_version"
   },
   "engines": {
