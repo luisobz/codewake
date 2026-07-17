@@ -8,6 +8,8 @@
 - **Agent auto-detection** — scans your `PATH` for every supported agent; extend or override the list with a small JSON config.
 - **Session discovery** — lists your existing Claude Code and Codex sessions (with titles and timestamps) for the current project; other agents accept a session id or start fresh.
 - **Job management** — list, inspect logs, cancel, and clean up scheduled jobs from the console or with subcommands.
+- **Suspend-safe scheduling** — timers track the wall clock, so a laptop that sleeps through the launch time fires the job right after waking instead of drifting.
+- **Cross-platform** — Linux (systemd user timers), macOS, and Windows (detached waiter, `.cmd`-shim aware); CI runs on all three.
 - **Zero dependencies** — plain Node.js ≥ 18. Prompts are never passed through a shell, so no quoting surprises.
 
 ## Install
@@ -122,10 +124,20 @@ Add or override agents in `~/.config/agent-resume/config.json` (or point `AGENT_
 
 ## How scheduling works
 
-- On **Linux with systemd**, jobs are armed with a transient user timer (`systemd-run --user --on-active=…`), so they survive the terminal closing. If your machine logs you out completely, enable lingering once: `loginctl enable-linger "$USER"`.
-- **Everywhere else** (macOS, Windows, containers), a small detached Node process waits for the launch time. It survives the terminal closing, but not a reboot.
+- On **Linux with systemd**, jobs are armed with a transient user timer (`systemd-run --user --on-calendar=…`). Wall-clock timers keep ticking through laptop suspend and fire on resume if their time passed while the lid was closed. They survive the terminal closing; if your machine logs you out completely, enable lingering once: `loginctl enable-linger "$USER"`.
+- On **macOS, Windows, and Linux without systemd**, a small detached Node process waits for the launch time. It re-checks the wall clock every minute rather than sleeping once, so a machine that suspends overnight launches the job right after waking instead of drifting by the suspended time. It survives the terminal closing, but not a reboot.
 
-Job state and logs live in `~/.local/state/agent-resume/` (override with `AGENT_RESUME_STATE_DIR`). Jobs whose launch time passed without running (e.g. after a reboot) show up as `overdue` in `agent-resume jobs` — reschedule them.
+A session can only have **one pending job** at a time — scheduling a second resume for the same session is refused until you cancel the first, so two agents never race each other over one transcript. Jobs whose launch time passed without running (e.g. after a reboot) show up as `overdue` in `agent-resume jobs`, with how late they are — reschedule them.
+
+### Where state and logs live
+
+| OS | Job state | Execution logs |
+| --- | --- | --- |
+| Linux | `~/.local/state/agent-resume/` | `~/.local/state/agent-resume/logs/` |
+| macOS | `~/Library/Application Support/agent-resume/` | `~/Library/Logs/agent-resume/` |
+| Windows | `%LOCALAPPDATA%\agent-resume\` | `%LOCALAPPDATA%\agent-resume\Logs\` |
+
+Every job run captures the agent's stdout/stderr to `<job-id>.log`, readable with `agent-resume logs <job-id>`. `AGENT_RESUME_STATE_DIR` overrides the state location (logs move under `<dir>/logs`). On Windows, npm-installed agents (`.cmd` shims) are launched through `cmd.exe` with every argument escaped — never an interpolated shell string.
 
 ## A word about unattended runs
 

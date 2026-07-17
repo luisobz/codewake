@@ -23,13 +23,14 @@ test('select returns the highlighted value on enter', async () => {
   assert.match(io.output(), /alpha/);
 });
 
-test('select supports object choices and number shortcuts', async () => {
+test('select supports object choices; digits highlight but do not select', async () => {
   const io = makeIo();
   const picked = select('Pick one', [
     { label: 'First', value: 1 },
     { label: 'Second', value: 2, hint: '(hint)' },
   ], io);
-  io.stdin.write('2');
+  io.stdin.write('2'); // highlight only — a pasted "2h 30m" must not select
+  io.stdin.write('\r');
   assert.equal(await picked, 2);
   assert.match(io.output(), /\(hint\)/);
 });

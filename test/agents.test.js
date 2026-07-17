@@ -17,8 +17,9 @@ const codex = BUILTIN_AGENTS.find((agent) => agent.id === 'codex');
 const gemini = BUILTIN_AGENTS.find((agent) => agent.id === 'gemini');
 
 function makeFakeBin(dir, name) {
-  const path = join(dir, name);
-  writeFileSync(path, '#!/bin/sh\nexit 0\n');
+  // Windows resolves executables through PATHEXT, so fake a .cmd shim there.
+  const path = process.platform === 'win32' ? join(dir, `${name}.cmd`) : join(dir, name);
+  writeFileSync(path, process.platform === 'win32' ? '@echo off\r\n' : '#!/bin/sh\nexit 0\n');
   chmodSync(path, 0o755);
   return path;
 }
@@ -61,6 +62,21 @@ test('buildCommand builds new sessions for codex', () => {
   );
 });
 
+test('buildCommand does not re-expand placeholders found inside values', () => {
+  const args = buildCommand(claude, {
+    mode: 'resume',
+    sessionId: '{prompt}',
+    prompt: 'do the actual thing',
+  });
+  assert.deepEqual(args, ['--resume', '{prompt}', '-p', 'do the actual thing']);
+  const reverse = buildCommand(claude, {
+    mode: 'resume',
+    sessionId: 'abc',
+    prompt: 'mentions {session} literally',
+  });
+  assert.deepEqual(reverse, ['--resume', 'abc', '-p', 'mentions {session} literally']);
+});
+
 test('buildCommand refuses unsupported modes with a clear message', () => {
   assert.throws(
     () => buildCommand(gemini, { mode: 'resume', sessionId: 's', prompt: 'p' }),
@@ -84,12 +100,12 @@ test('which finds executables on a custom PATH', () => {
 
 test('detectAgents reports installed and missing agents', () => {
   const dir = mkdtempSync(join(tmpdir(), 'agent-resume-detect-'));
-  makeFakeBin(dir, 'claude');
-  makeFakeBin(dir, 'codex');
+  const claudeBin = makeFakeBin(dir, 'claude');
+  const codexBin = makeFakeBin(dir, 'codex');
   const detected = detectAgents(BUILTIN_AGENTS, { env: { PATH: dir } });
   const byId = Object.fromEntries(detected.map(({ agent, bin }) => [agent.id, bin]));
-  assert.ok(byId.claude?.endsWith('/claude'));
-  assert.ok(byId.codex?.endsWith('/codex'));
+  assert.equal(byId.claude, claudeBin);
+  assert.equal(byId.codex, codexBin);
   assert.equal(byId.gemini, null);
 });
 

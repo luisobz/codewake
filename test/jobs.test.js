@@ -1,8 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { delimiter, join } from 'node:path';
 import {
   cancelJob,
   clearJobs,
@@ -13,8 +13,11 @@ import {
   runJob,
   saveJob,
   scheduleJob,
+  systemdCalendarSpec,
   waitJob,
 } from '../lib/jobs.js';
+
+const onWindows = process.platform === 'win32';
 
 const claude = { id: 'claude', name: 'Claude Code' };
 
@@ -98,9 +101,69 @@ test('waitJob runs a due job and skips cancelled ones', async () => {
 test('cancelJob cancels pending jobs and refuses finished ones', () => {
   const env = makeEnv();
   const job = saveJob({ ...scheduleJob(spec(), { dryRun: true, env }), pid: 99999999 }, env);
-  const cancelled = cancelJob(job.id, env);
+  const { job: cancelled, warning } = cancelJob(job.id, env);
   assert.equal(cancelled.status, 'cancelled');
+  assert.equal(warning, null);
   assert.throws(() => cancelJob(job.id, env), /only pending jobs/);
+});
+
+test('scheduleJob refuses a second pending job for the same session', () => {
+  const env = makeEnv();
+  saveJob(scheduleJob(spec({ runAt: new Date(Date.now() + 3600_000) }), { dryRun: true, env }), env);
+  assert.throws(() => scheduleJob(spec(), { dryRun: true, env }), /already has a pending job/);
+  // A different session, or a brand new session, is fine.
+  scheduleJob(spec({ sessionId: 'other-session' }), { dryRun: true, env });
+  scheduleJob(spec({ sessionId: null, mode: 'create' }), { dryRun: true, env });
+  scheduleJob(spec({ sessionId: null, mode: 'create' }), { dryRun: true, env });
+});
+
+test('scheduleJob allows rescheduling once the previous job finished', async () => {
+  const env = makeEnv();
+  const first = saveJob(scheduleJob(spec(), { dryRun: true, env }), env);
+  await runJob(first.id, env);
+  scheduleJob(spec(), { dryRun: true, env });
+});
+
+test('waitJob honors a cancellation that happens while waiting', async () => {
+  const env = { ...makeEnv(), AGENT_RESUME_POLL_MS: '25' };
+  const job = saveJob(scheduleJob(spec({ runAt: new Date(Date.now() + 500) }), { dryRun: true, env }), env);
+  const waiting = waitJob(job.id, env);
+  await new Promise((resolve) => setTimeout(resolve, 60));
+  cancelJob(job.id, env);
+  const result = await waiting;
+  assert.equal(result.status, 'cancelled');
+  assert.ok(!existsSync(logFile(job.id, env)), 'the agent never ran');
+});
+
+test('waitJob does not fire early for delays beyond the setTimeout clamp', async () => {
+  // A single setTimeout above 2^31-1 ms fires after 1ms; the polling loop must not.
+  const env = { ...makeEnv(), AGENT_RESUME_POLL_MS: '25' };
+  const runAt = new Date(Date.now() + 2 ** 31 + 3600_000);
+  const job = saveJob(scheduleJob(spec({ runAt }), { dryRun: true, env }), env);
+  const waiting = waitJob(job.id, env);
+  await new Promise((resolve) => setTimeout(resolve, 150));
+  assert.equal(loadJob(job.id, env).status, 'pending', 'job did not fire early');
+  cancelJob(job.id, env);
+  assert.equal((await waiting).status, 'cancelled');
+});
+
+test('cancelJob does not signal the recorded pid of an overdue job', () => {
+  // After a reboot the OS may have handed that pid to an unrelated process.
+  const env = makeEnv();
+  const job = saveJob({
+    ...scheduleJob(spec({ runAt: new Date(Date.now() + 3600_000) }), { dryRun: true, env }),
+    runAt: new Date(Date.now() - 3600_000).toISOString(),
+    pid: process.pid, // if cancelJob signalled it, this test process would die
+  }, env);
+  const { job: cancelled } = cancelJob(job.id, env);
+  assert.equal(cancelled.status, 'cancelled');
+});
+
+test('systemdCalendarSpec formats local wall-clock time with a small floor', () => {
+  const now = Date.parse('2026-07-16T10:00:00');
+  assert.equal(systemdCalendarSpec(Date.parse('2026-07-16T14:30:05'), now), '2026-07-16 14:30:05');
+  // Past or immediate timestamps are floored to now + 5s.
+  assert.equal(systemdCalendarSpec(now - 1000, now), '2026-07-16 10:00:05');
 });
 
 test('spawn backend arms a detached waiter that launches the job', async () => {
@@ -140,4 +203,107 @@ test('displayStatus flags pending jobs whose launch time passed', () => {
 test('job ids are validated before touching the filesystem', () => {
   const env = makeEnv();
   assert.throws(() => loadJob('../escape', env), /valid job id/);
+});
+
+// --- systemd backend (exercised through fake systemd-run/systemctl on PATH) ---
+
+function makeFakeSystemd({ systemdRunExit = 0, systemctlExit = 0, systemctlScript = null } = {}) {
+  const dir = mkdtempSync(join(tmpdir(), 'agent-resume-systemd-'));
+  const capture = join(dir, 'systemd-run.args');
+  writeFileSync(join(dir, 'systemd-run'), [
+    '#!/bin/sh',
+    `printf '%s\\n' "$@" > "${capture}"`,
+    systemdRunExit === 0 ? 'exit 0' : `echo "boom" >&2\nexit ${systemdRunExit}`,
+  ].join('\n'));
+  chmodSync(join(dir, 'systemd-run'), 0o755);
+  const stopLog = join(dir, 'systemctl.calls');
+  writeFileSync(join(dir, 'systemctl'), systemctlScript ?? [
+    '#!/bin/sh',
+    `printf '%s\\n' "$*" >> "${stopLog}"`,
+    `exit ${systemctlExit}`,
+  ].join('\n'));
+  chmodSync(join(dir, 'systemctl'), 0o755);
+  return { dir, capture, stopLog };
+}
+
+function withPath(dir, fn) {
+  const original = process.env.PATH;
+  process.env.PATH = `${dir}${delimiter}${original}`;
+  try {
+    return fn();
+  } finally {
+    process.env.PATH = original;
+  }
+}
+
+test('systemd backend arms an on-calendar transient timer', { skip: onWindows }, () => {
+  const env = { ...makeEnv(), AGENT_RESUME_BACKEND: 'systemd' };
+  const fake = makeFakeSystemd();
+  const job = withPath(fake.dir, () =>
+    scheduleJob(spec({ runAt: new Date(Date.now() + 3600_000) }), { env }));
+  assert.equal(job.backend, 'systemd');
+  assert.equal(loadJob(job.id, env).status, 'pending');
+  const args = readFileSync(fake.capture, 'utf8').split('\n');
+  assert.ok(args.includes(`--unit=agent-resume-${job.id}`));
+  assert.ok(args.some((arg) => /^--on-calendar=\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(arg)));
+  assert.ok(args.includes('--run'));
+  assert.ok(args.includes(job.id));
+});
+
+test('systemd backend rolls the job back when systemd-run fails', { skip: onWindows }, () => {
+  const env = { ...makeEnv(), AGENT_RESUME_BACKEND: 'systemd' };
+  const fake = makeFakeSystemd({ systemdRunExit: 1 });
+  assert.throws(
+    () => withPath(fake.dir, () => scheduleJob(spec(), { env })),
+    /boom/,
+  );
+  assert.deepEqual(listJobs(env), []);
+});
+
+test('systemd cancel stops the timer and the service', { skip: onWindows }, () => {
+  const env = { ...makeEnv(), AGENT_RESUME_BACKEND: 'systemd' };
+  const fake = makeFakeSystemd();
+  const job = withPath(fake.dir, () =>
+    scheduleJob(spec({ runAt: new Date(Date.now() + 3600_000) }), { env }));
+  const { job: cancelled, warning } = withPath(fake.dir, () => cancelJob(job.id, env));
+  assert.equal(cancelled.status, 'cancelled');
+  assert.equal(warning, null);
+  const calls = readFileSync(fake.stopLog, 'utf8');
+  assert.match(calls, new RegExp(`stop agent-resume-${job.id}\\.timer`));
+  assert.match(calls, new RegExp(`stop agent-resume-${job.id}\\.service`));
+});
+
+test('systemd cancel warns when the timer cannot be confirmed stopped', { skip: onWindows }, () => {
+  const env = { ...makeEnv(), AGENT_RESUME_BACKEND: 'systemd' };
+  const fake = makeFakeSystemd();
+  const job = withPath(fake.dir, () =>
+    scheduleJob(spec({ runAt: new Date(Date.now() + 3600_000) }), { env }));
+  const failing = makeFakeSystemd({ systemctlExit: 1 });
+  const { warning } = withPath(failing.dir, () => cancelJob(job.id, env));
+  assert.match(warning, /Could not confirm/);
+});
+
+test('cancelJob refuses to clobber a job that started meanwhile', { skip: onWindows }, () => {
+  // The fake systemctl flips the job to "running" mid-cancel, simulating the
+  // timer firing at the exact moment of cancellation.
+  const env = { ...makeEnv(), AGENT_RESUME_BACKEND: 'systemd' };
+  const fake = makeFakeSystemd();
+  const job = withPath(fake.dir, () =>
+    scheduleJob(spec({ runAt: new Date(Date.now() + 3600_000) }), { env }));
+  const jobPath = join(env.AGENT_RESUME_STATE_DIR, `${job.id}.json`);
+  const running = JSON.stringify({ ...job, status: 'running' });
+  const racing = makeFakeSystemd({
+    systemctlScript: [
+      '#!/bin/sh',
+      `cat > "${jobPath}" <<'JSON'`,
+      running,
+      'JSON',
+      'exit 0',
+    ].join('\n'),
+  });
+  assert.throws(
+    () => withPath(racing.dir, () => cancelJob(job.id, env)),
+    /already running; too late to cancel/,
+  );
+  assert.equal(loadJob(job.id, env).status, 'running', 'the live state was not clobbered');
 });

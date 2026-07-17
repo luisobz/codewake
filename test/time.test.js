@@ -23,9 +23,17 @@ test('parseDuration treats a bare number as minutes', () => {
 
 test('parseDuration rejects garbage and zero', () => {
   assert.throws(() => parseDuration('soon'), /Could not understand/);
-  assert.throws(() => parseDuration('1x'), /Could not understand/);
+  assert.throws(() => parseDuration('1x'), /Unknown time unit "x"/);
   assert.throws(() => parseDuration('0m'), /greater than zero/);
   assert.throws(() => parseDuration(''), /empty/);
+});
+
+test('parseDuration refuses misleading unit words instead of guessing', () => {
+  // "1 month" must never silently become 1 minute for a scheduler.
+  assert.throws(() => parseDuration('1 month'), /Unknown time unit "month"/);
+  assert.throws(() => parseDuration('2 weeks'), /Unknown time unit "weeks"/);
+  assert.equal(parseDuration('2 hours'), 7200);
+  assert.equal(parseDuration('3 days'), 3 * 86400);
 });
 
 test('parseClockTime picks today when the time is still ahead', () => {
@@ -67,4 +75,11 @@ test('describeRunAt says "now" for imminent launches', () => {
   const now = new Date();
   assert.equal(describeRunAt(now, now), 'now');
   assert.match(describeRunAt(new Date(now.getTime() + 3600_000), now), /^in 1h /);
+});
+
+test('describeRunAt says how overdue a past launch is', () => {
+  const now = new Date();
+  assert.equal(describeRunAt(new Date(now.getTime() - 2 * 3600_000), now), 'due 2h ago');
+  // Less than a minute late still reads as "now".
+  assert.equal(describeRunAt(new Date(now.getTime() - 30_000), now), 'now');
 });

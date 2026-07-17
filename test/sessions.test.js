@@ -18,7 +18,7 @@ test('encodeClaudeProject matches Claude Code path encoding', () => {
 
 test('claude sessions are read from the encoded project directory', () => {
   const home = makeHome();
-  const project = '/work/demo';
+  const project = mkdtempSync(join(tmpdir(), 'agent-resume-project-'));
   const dir = join(home, '.claude', 'projects', encodeClaudeProject(project));
   mkdirSync(dir, { recursive: true });
 
@@ -41,30 +41,32 @@ test('claude sessions are read from the encoded project directory', () => {
 
 test('claude sessions in other projects are not listed', () => {
   const home = makeHome();
-  const dir = join(home, '.claude', 'projects', encodeClaudeProject('/other/project'));
+  const project = mkdtempSync(join(tmpdir(), 'agent-resume-project-'));
+  const dir = join(home, '.claude', 'projects', encodeClaudeProject(`${project}-other`));
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, 'x.jsonl'), JSON.stringify({ type: 'summary', summary: 'other' }));
-  assert.deepEqual(listSessions(byId.claude, { project: '/work/demo', home }), []);
+  assert.deepEqual(listSessions(byId.claude, { project, home }), []);
 });
 
 test('codex rollouts are discovered recursively and filtered by cwd', () => {
   const home = makeHome();
+  const project = mkdtempSync(join(tmpdir(), 'agent-resume-project-'));
   const day = join(home, '.codex', 'sessions', '2026', '07', '15');
   mkdirSync(day, { recursive: true });
   writeFileSync(
     join(day, 'rollout-2026-07-15T10-00-00-aaaa1111.jsonl'),
-    `${JSON.stringify({ type: 'session_meta', payload: { id: 'aaaa1111', cwd: '/work/demo' } })}\n`,
+    `${JSON.stringify({ type: 'session_meta', payload: { id: 'aaaa1111', cwd: project } })}\n`,
   );
   writeFileSync(
     join(day, 'rollout-2026-07-15T11-00-00-bbbb2222.jsonl'),
-    `${JSON.stringify({ type: 'session_meta', payload: { id: 'bbbb2222', cwd: '/elsewhere' } })}\n`,
+    `${JSON.stringify({ type: 'session_meta', payload: { id: 'bbbb2222', cwd: `${project}-elsewhere` } })}\n`,
   );
 
-  const local = listSessions(byId.codex, { project: '/work/demo', home });
+  const local = listSessions(byId.codex, { project, home });
   assert.deepEqual(local.map((session) => session.id), ['aaaa1111']);
 
   // With no local match, every session is offered.
-  const all = listSessions(byId.codex, { project: '/somewhere/new', home });
+  const all = listSessions(byId.codex, { project: `${project}-new`, home });
   assert.equal(all.length, 2);
 });
 

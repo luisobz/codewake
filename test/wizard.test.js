@@ -135,6 +135,35 @@ test('wizard requires a prompt for new sessions', async () => {
   assert.equal(jobs[0].skipPermissions, false);
 });
 
+test('wizard refuses a second job for the same session', async () => {
+  const env = makeEnv();
+  const io = makeIo();
+  const done = runWizard({ io, env });
+  await type(io.stdin, [
+    '\r', // Schedule
+    '\r', // Claude Code
+    '\r', // no sessions → manual id
+    'sess-dup\n',
+    '\n', // default prompt
+    '\n', // permissions default no
+    '\x1b[B\r', // After a delay
+    '3h\n',
+    'y\n', // confirm
+    // Second attempt for the same session stops right after the session step.
+    '\r', // Schedule
+    '\r', // Claude Code
+    '\r', // manual id
+    'sess-dup\n',
+    'q', // back at menu after the warning → quit
+  ]);
+  await done;
+  assert.match(io.output(), /already has a pending job/);
+  const jobs = listJobs(env);
+  assert.equal(jobs.length, 1);
+  const { cancelJob } = await import('../lib/jobs.js');
+  cancelJob(jobs[0].id, env);
+});
+
 test('wizard lists and cancels jobs from the menu', async () => {
   const env = makeEnv();
   const io = makeIo();

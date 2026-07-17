@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { parseArgs, resolveRunAt, usage } from '../lib/cli.js';
-import { renderJobsTable } from '../lib/wizard.js';
+import { renderJobsTable, shortenPath } from '../lib/wizard.js';
 
 test('no arguments opens the interactive console', () => {
   assert.deepEqual(parseArgs([]), { command: 'wizard' });
@@ -109,7 +109,39 @@ test('renderJobsTable aligns columns and shows status', () => {
   assert.equal(lines.length, 3);
   assert.match(lines[0], /ID\s+AGENT\s+STATUS\s+LAUNCH\s+SESSION\s+PROJECT/);
   assert.match(lines[1], /job-1\s+Claude Code\s+pending\s+in 1h/);
-  assert.match(lines[1], /550e8400-e29/);
+  assert.match(lines[1], /550e8400-e2…/);
   assert.match(lines[2], /job-2\s+OpenAI Codex CLI\s+done/);
   assert.match(lines[2], /new session/);
+});
+
+test('renderJobsTable always fits the terminal width', () => {
+  const now = Date.now();
+  const jobs = [{
+    id: 'job-1',
+    agentName: 'Claude Code',
+    status: 'pending',
+    runAt: new Date(now + 3600_000).toISOString(),
+    mode: 'resume',
+    sessionId: '550e8400-e29b-41d4',
+    project: '/very/long/project/path/that/goes/on/and/on/and/never/seems/to/stop/demo-app',
+  }];
+  const wide = renderJobsTable(jobs, now, { width: 100 });
+  for (const line of wide.split('\n')) {
+    assert.ok(line.length <= 100, `"${line}" fits in 100 columns (${line.length})`);
+  }
+  assert.match(wide, /…/);
+  assert.match(wide, /demo-app/, 'the tail of the path is preserved');
+
+  // Too narrow for paths: the PROJECT column is dropped entirely.
+  const narrow = renderJobsTable(jobs, now, { width: 60 });
+  assert.ok(!narrow.includes('PROJECT'));
+  assert.match(narrow, /job-1/);
+});
+
+test('shortenPath abbreviates the home directory and keeps path tails', () => {
+  assert.equal(shortenPath('/home/dev/work/app', 40, '/home/dev'), '~/work/app');
+  const shortened = shortenPath('/home/dev/some/extremely/deep/nested/dir', 16, '/home/dev');
+  assert.ok(shortened.length <= 16);
+  assert.ok(shortened.startsWith('…'));
+  assert.ok(shortened.endsWith('dir'));
 });

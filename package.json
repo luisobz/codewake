@@ -33,12 +33,17 @@
   "engines": {
     "node": ">=18"
   },
+  "os": [
+    "linux",
+    "darwin",
+    "win32"
+  ],
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/luisobz/claude-resume.git"
+    "url": "git+https://github.com/luisobz/agent-resume.git"
   },
   "bugs": {
-    "url": "https://github.com/luisobz/claude-resume/issues"
+    "url": "https://github.com/luisobz/agent-resume/issues"
   },
-  "homepage": "https://github.com/luisobz/claude-resume#readme"
+  "homepage": "https://github.com/luisobz/agent-resume#readme"
 }
