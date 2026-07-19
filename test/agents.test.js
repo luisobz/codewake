@@ -87,6 +87,10 @@ test('buildCommand refuses unsupported modes with a clear message', () => {
 test('buildCommand opens sessions in the agent\'s own UI', () => {
   assert.deepEqual(buildCommand(claude, { mode: 'open', sessionId: 'abc' }), ['--resume', 'abc']);
   assert.deepEqual(buildCommand(codex, { mode: 'open', sessionId: 'abc' }), ['resume', 'abc']);
+  assert.deepEqual(
+    buildCommand(claude, { mode: 'open', sessionId: 'abc', skipPermissions: true }),
+    ['--resume', 'abc', '--dangerously-skip-permissions'],
+  );
   assert.throws(
     () => buildCommand(gemini, { mode: 'open', sessionId: 'abc' }),
     /does not support opening/,

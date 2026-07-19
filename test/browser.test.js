@@ -189,6 +189,29 @@ test('browser opens the selected job in its agent CLI', async () => {
   assert.match(args, /sess-open-1/);
 });
 
+test('browser opens with skip-permissions on S', async () => {
+  const env = makeEnv();
+  const binDir = mkdtempSync(join(tmpdir(), 'codewake-browser-bin-'));
+  const capture = join(binDir, 'open.args');
+  if (onWindows) {
+    writeFileSync(join(binDir, 'claude.cmd'), `@echo off\r\necho %* > "${capture}"\r\n`);
+  } else {
+    writeFileSync(join(binDir, 'claude'), `#!/bin/sh\nprintf '%s\\n' "$@" > "${capture}"\n`);
+    chmodSync(join(binDir, 'claude'), 0o755);
+  }
+  env.PATH = binDir;
+  fixtureJob(env, { status: 'done', sessionId: 'sess-open-skip' });
+  const io = makeIo();
+  const result = browseJobs({ io, env });
+  await type(io.stdin, ['S']); // S = open skipping permission prompts
+  await waitFor(() => /closed \(exit 0\)/.test(io.output()));
+  io.stdin.write('q');
+  assert.equal(await result, 'menu');
+  const args = readFileSync(capture, 'utf8');
+  assert.match(args, /sess-open-skip/);
+  assert.match(args, /--dangerously-skip-permissions/);
+});
+
 test('browser explains why a fresh-session job cannot be opened', async () => {
   const env = makeEnv();
   fixtureJob(env, { status: 'done', mode: 'create', sessionId: null });

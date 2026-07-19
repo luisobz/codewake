@@ -85,8 +85,13 @@ test('retry parses the job id and its timing flags', () => {
 });
 
 test('open parses and requires a job id', () => {
-  assert.deepEqual(parseArgs(['open', 'abc']), { command: 'open', jobId: 'abc' });
+  assert.deepEqual(parseArgs(['open', 'abc']), { command: 'open', jobId: 'abc', skipPermissions: false });
+  assert.deepEqual(
+    parseArgs(['open', 'abc', '--skip-permissions']),
+    { command: 'open', jobId: 'abc', skipPermissions: true },
+  );
   assert.throws(() => parseArgs(['open']), /open <job-id>/);
+  assert.throws(() => parseArgs(['open', 'abc', '--nope']), /Unknown option/);
 });
 
 test('describeJobHeader summarizes status, timing and errors', () => {
